@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.28;
 
 import {PriceConverter} from "./PriceConverter.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
@@ -9,18 +9,19 @@ error FundMe__NotOwner();
 contract FundMe {
     using PriceConverter for uint256;
     uint256 public constant MINIMUM_USD = 5e18;
-    address public immutable i_owner;
+    address private immutable i_owner;
     address[] private s_funders;
-    mapping(address funder => uint amountFunded)
+    mapping(address funder => uint256 amountFunded)
         private s_addressToAmountFunded;
-
-        
-    AggregatorV3Interface private s_priceFeed;
+    AggregatorV3Interface private immutable s_priceFeed;
 
     constructor(address priceFeed) {
         i_owner = msg.sender; //msg.sender is the address that deploys the contract
         s_priceFeed = AggregatorV3Interface(priceFeed);
     }
+
+    event Funded(address indexed funder, uint256 amount);
+    event Withdrawn(address indexed owner, uint256 amount);
 
     modifier onlyOwner() {
         if (msg.sender != i_owner) {
@@ -44,12 +45,15 @@ contract FundMe {
         );
         s_funders.push(msg.sender);
         s_addressToAmountFunded[msg.sender] += msg.value;
+        emit Funded(msg.sender, msg.value);
     }
 
-    function withdraw() public onlyOwner {
+    function withdraw() external onlyOwner {
+        uint256 fundersCount = s_funders.length;
+        uint256 totalBalance = address(this).balance;
         for (
-            uint funderIndex = 0;
-            funderIndex < s_funders.length;
+            uint256 funderIndex = 0;
+            funderIndex < fundersCount;
             funderIndex++
         ) {
             address funder = s_funders[funderIndex];
@@ -69,9 +73,10 @@ contract FundMe {
             value: address(this).balance
         }("");
         require(callSuccess, "Call failed"); //only reverts if require fails
+        emit Withdrawn(msg.sender, totalBalance);
     }
 
-    function getVersion() public view returns (uint256) {
+    function getVersion() external view returns (uint256) {
         return s_priceFeed.version();
     }
 
@@ -85,5 +90,9 @@ contract FundMe {
 
     function getFunder(uint256 index) external view returns (address) {
         return s_funders[index];
+    }
+
+    function getOwner() external view returns (address) {
+        return i_owner;
     }
 }
